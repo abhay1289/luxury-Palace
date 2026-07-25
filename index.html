@@ -129,7 +129,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;}
    ============================================================ */
 .hero{position:relative;height:300vh;}
 .hero-sticky{position:sticky;top:0;height:100vh;height:100dvh;overflow:hidden;background:linear-gradient(160deg,var(--dusk),var(--ink));}
-.hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(1.04) contrast(1.05) saturate(1.08);z-index:0;}
+.hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(1.04) contrast(1.05) saturate(1.08);z-index:0;transform:translateZ(0);will-change:transform;backface-visibility:hidden;}
 .hero-overlay{position:absolute;inset:0;pointer-events:none;z-index:1;
   background:
     radial-gradient(60% 45% at 15% 12%, rgba(231,192,121,.10) 0%, transparent 60%),
@@ -785,62 +785,91 @@ section[id]{scroll-margin-top:88px;}
   }, 70);
   function finish(){ pre.classList.add('hide'); setupScrub(); }
 
-  // ===== Hero scroll-scrub + rotating headings (iOS Safari & Mobile Supported) =====
+  // ===== Silky-Smooth Mobile & Desktop Hero Scroll-Scrub =====
   function setupScrub(){
     const heads = document.querySelectorAll('.hero-heading');
     const dots = document.querySelectorAll('.hero-progress-dot');
     const hero = document.getElementById('hero');
 
-    // Pre-warm iOS WebKit video decoder
-    video.play().then(() => {
-      video.pause();
-    }).catch(() => {});
+    let currentVideoTime = 0;
+    let targetVideoTime = 0;
+    let isScrubbing = false;
+    let rafId = null;
+    let lastIdx = -1;
+    let pauseTimer = null;
 
-    let last = -1;
-    let ticking = false;
-    let scrollTimeout = null;
-
-    function updateScrub(){
-      const scrollable = hero.offsetHeight - window.innerHeight;
-      if (scrollable > 0){
-        const progress = Math.min(1, Math.max(0, -hero.getBoundingClientRect().top / scrollable));
-        if (!isNaN(video.duration) && video.duration > 0){
-          const targetTime = Math.min(progress * video.duration, Math.max(0, video.duration - 0.05));
-          if (Math.abs(video.currentTime - targetTime) > 0.005) {
-            video.currentTime = targetTime;
-          }
-        }
-        const idx = Math.min(heads.length - 1, Math.floor(progress * heads.length));
-        if (idx !== last){
-          heads.forEach((h,i) => h.classList.toggle('is-active', i === idx));
-          dots.forEach((d,i) => d.classList.toggle('is-active', i === idx));
-          last = idx;
-        }
-      }
-      ticking = false;
+    // Pre-warm iOS WebKit decoder
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        video.pause();
+      }).catch(() => {});
     }
 
-    function onScroll(){
-      // Wake up iOS WebKit hardware decoder on touch/scroll interaction
+    function renderFrame() {
+      const scrollable = hero.offsetHeight - window.innerHeight;
+      if (scrollable > 0) {
+        const progress = Math.min(1, Math.max(0, -hero.getBoundingClientRect().top / scrollable));
+        
+        if (!isNaN(video.duration) && video.duration > 0) {
+          targetVideoTime = Math.min(progress * video.duration, Math.max(0, video.duration - 0.05));
+          
+          // Smooth LERP (linear interpolation) for ultra-fluid video seeking
+          const diff = targetVideoTime - currentVideoTime;
+          if (Math.abs(diff) > 0.001) {
+            currentVideoTime += diff * 0.25;
+            
+            if (!video.seeking && Math.abs(video.currentTime - currentVideoTime) > 0.005) {
+              video.currentTime = currentVideoTime;
+            }
+          }
+        }
+
+        const idx = Math.min(heads.length - 1, Math.floor(progress * heads.length));
+        if (idx !== lastIdx) {
+          heads.forEach((h, i) => h.classList.toggle('is-active', i === idx));
+          dots.forEach((d, i) => d.classList.toggle('is-active', i === idx));
+          lastIdx = idx;
+        }
+      }
+
+      if (isScrubbing || Math.abs(targetVideoTime - currentVideoTime) > 0.005) {
+        rafId = requestAnimationFrame(renderFrame);
+      } else {
+        rafId = null;
+        if (video.paused === false) {
+          video.pause();
+        }
+      }
+    }
+
+    function startScrub() {
       if (video.paused) {
         video.play().catch(() => {});
       }
-      if (!ticking){
-        requestAnimationFrame(updateScrub);
-        ticking = true;
+      
+      isScrubbing = true;
+
+      if (!rafId) {
+        rafId = requestAnimationFrame(renderFrame);
       }
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        video.pause();
-      }, 150);
+
+      clearTimeout(pauseTimer);
+      pauseTimer = setTimeout(() => {
+        isScrubbing = false;
+      }, 200);
     }
 
-    video.addEventListener('loadedmetadata', updateScrub);
-    video.addEventListener('canplay', updateScrub);
-    ['scroll', 'touchmove', 'touchstart', 'resize'].forEach(evt => {
-      addEventListener(evt, onScroll, {passive: true});
+    video.addEventListener('loadedmetadata', () => {
+      currentVideoTime = video.currentTime || 0;
+      startScrub();
     });
-    updateScrub();
+
+    ['scroll', 'touchmove', 'touchstart', 'touchend', 'resize'].forEach(evt => {
+      window.addEventListener(evt, startScrub, { passive: true });
+    });
+
+    startScrub();
   }
 
   // ===== Nav background on scroll =====
