@@ -454,7 +454,7 @@ section[id]{scroll-margin-top:88px;}
      ============================================================ -->
 <section class="hero" id="hero">
   <div class="hero-sticky">
-    <video class="hero-video" id="heroVideo" muted playsinline preload="auto" poster="palace-poster.jpg">
+    <video class="hero-video" id="heroVideo" muted playsinline webkit-playsinline preload="auto" poster="palace-poster.jpg">
       <source src="palace-scrub-1080.mp4" media="(max-width: 768px)" type="video/mp4">
       <source src="palace-scrub-1440.mp4" type="video/mp4">
     </video>
@@ -785,15 +785,20 @@ section[id]{scroll-margin-top:88px;}
   }, 70);
   function finish(){ pre.classList.add('hide'); setupScrub(); }
 
-  // ===== Hero scroll-scrub + rotating headings (Mobile & Desktop) =====
+  // ===== Hero scroll-scrub + rotating headings (iOS Safari & Mobile Supported) =====
   function setupScrub(){
     const heads = document.querySelectorAll('.hero-heading');
     const dots = document.querySelectorAll('.hero-progress-dot');
     const hero = document.getElementById('hero');
-    video.pause();
-    
+
+    // Pre-warm iOS WebKit video decoder
+    video.play().then(() => {
+      video.pause();
+    }).catch(() => {});
+
     let last = -1;
     let ticking = false;
+    let scrollTimeout = null;
 
     function updateScrub(){
       const scrollable = hero.offsetHeight - window.innerHeight;
@@ -816,16 +821,25 @@ section[id]{scroll-margin-top:88px;}
     }
 
     function onScroll(){
+      // Wake up iOS WebKit hardware decoder on touch/scroll interaction
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
       if (!ticking){
         requestAnimationFrame(updateScrub);
         ticking = true;
       }
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        video.pause();
+      }, 150);
     }
 
     video.addEventListener('loadedmetadata', updateScrub);
     video.addEventListener('canplay', updateScrub);
-    addEventListener('scroll', onScroll, {passive:true});
-    addEventListener('resize', onScroll, {passive:true});
+    ['scroll', 'touchmove', 'touchstart', 'resize'].forEach(evt => {
+      addEventListener(evt, onScroll, {passive: true});
+    });
     updateScrub();
   }
 
