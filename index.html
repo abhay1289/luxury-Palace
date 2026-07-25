@@ -184,11 +184,17 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;}
     transform:none;
     transition:opacity .35s var(--ease),transform .35s var(--ease),visibility 0s;
   }
-  .nav__links .nav__link{
+  .nav__links .nav__link,
+  .nav--on-light .nav__links .nav__link{
     font-family:var(--font-display);
-    font-size:1.45rem;
+    font-size:1.55rem;
     letter-spacing:.08em;
-    color:var(--cream);
+    color:var(--cream)!important;
+    text-shadow:0 2px 14px rgba(0,0,0,.6);
+  }
+  .nav__links .nav__link:hover,
+  .nav--on-light .nav__links .nav__link:hover{
+    color:var(--gold-2)!important;
   }
   .nav__links .nav__link--cta-mobile{
     display:inline-flex;
@@ -888,6 +894,9 @@ section[id]{scroll-margin-top:88px;}
     let rafId = null;
     let lastIdx = -1;
     let pauseTimer = null;
+    let lastSeekTime = 0;
+    const isMobile = matchMedia('(max-width:768px)').matches;
+    const seekMinInterval = isMobile ? 35 : 16;
 
     // Pre-warm iOS WebKit decoder
     const playPromise = video.play();
@@ -895,6 +904,22 @@ section[id]{scroll-margin-top:88px;}
       playPromise.then(() => {
         video.pause();
       }).catch(() => {});
+    }
+
+    function seekVideo(time) {
+      const now = performance.now();
+      if (now - lastSeekTime < seekMinInterval) return;
+      lastSeekTime = now;
+
+      try {
+        if (typeof video.fastSeek === 'function') {
+          video.fastSeek(time);
+        } else if (!video.seeking) {
+          video.currentTime = time;
+        }
+      } catch(e) {
+        if (!video.seeking) video.currentTime = time;
+      }
     }
 
     function renderFrame() {
@@ -905,14 +930,11 @@ section[id]{scroll-margin-top:88px;}
         if (!isNaN(video.duration) && video.duration > 0) {
           targetVideoTime = Math.min(progress * video.duration, Math.max(0, video.duration - 0.05));
           
-          // Smooth LERP (linear interpolation) for ultra-fluid video seeking
+          const lerpFactor = isMobile ? 0.35 : 0.25;
           const diff = targetVideoTime - currentVideoTime;
           if (Math.abs(diff) > 0.001) {
-            currentVideoTime += diff * 0.25;
-            
-            if (!video.seeking && Math.abs(video.currentTime - currentVideoTime) > 0.005) {
-              video.currentTime = currentVideoTime;
-            }
+            currentVideoTime += diff * lerpFactor;
+            seekVideo(currentVideoTime);
           }
         }
 
