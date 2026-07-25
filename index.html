@@ -128,7 +128,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;}
    HERO  (video + scroll-scrub effect preserved unchanged)
    ============================================================ */
 .hero{position:relative;height:300vh;}
-.hero-sticky{position:sticky;top:0;height:100vh;overflow:hidden;background:linear-gradient(160deg,var(--dusk),var(--ink));}
+.hero-sticky{position:sticky;top:0;height:100vh;height:100dvh;overflow:hidden;background:linear-gradient(160deg,var(--dusk),var(--ink));}
 .hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(1.04) contrast(1.05) saturate(1.08);z-index:0;}
 .hero-overlay{position:absolute;inset:0;pointer-events:none;z-index:1;
   background:
@@ -150,7 +150,18 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;}
 .hero-progress{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);display:flex;gap:9px;z-index:5;}
 .hero-progress-dot{width:30px;height:3px;background:rgba(244,233,214,.24);border-radius:3px;transition:background .35s,width .35s,box-shadow .35s;}
 .hero-progress-dot.is-active{background:var(--gold);width:52px;box-shadow:0 0 16px rgba(201,162,78,.6);}
-@media(max-width:768px){.hero{height:100vh;}.hero-sticky{position:relative;}.hero-heading{white-space:normal;}}
+@media(max-width:768px){
+  .hero{height:300vh;}
+  .hero-heading{white-space:normal;font-size:clamp(2rem,7vw,3.5rem);text-align:center;}
+  .hero-content{padding:0 var(--pad) 42px;}
+  .hero-kicker{margin-bottom:18px;font-size:.75rem;}
+  .hero-headings{margin-bottom:24px;}
+  .hero-progress{bottom:20px;}
+}
+@media(max-width:480px){
+  .hero-cta-row{gap:10px;width:100%;}
+  .hero-cta-row .btn{width:100%;justify-content:center;padding:14px 20px;}
+}
 
 /* ============================================================
    MARQUEE
@@ -444,6 +455,7 @@ section[id]{scroll-margin-top:88px;}
 <section class="hero" id="hero">
   <div class="hero-sticky">
     <video class="hero-video" id="heroVideo" muted playsinline preload="auto" poster="palace-poster.jpg">
+      <source src="palace-scrub-1080.mp4" media="(max-width: 768px)" type="video/mp4">
       <source src="palace-scrub-1440.mp4" type="video/mp4">
     </video>
     <div class="hero-overlay"></div>
@@ -773,24 +785,48 @@ section[id]{scroll-margin-top:88px;}
   }, 70);
   function finish(){ pre.classList.add('hide'); setupScrub(); }
 
-  // ===== Hero scroll-scrub + rotating headings (unchanged) =====
+  // ===== Hero scroll-scrub + rotating headings (Mobile & Desktop) =====
   function setupScrub(){
-    const isMobile = matchMedia('(max-width:768px)').matches;
     const heads = document.querySelectorAll('.hero-heading');
     const dots = document.querySelectorAll('.hero-progress-dot');
-    if (isMobile){ video.loop = true; video.play().catch(()=>{}); return; }
-    video.pause();
     const hero = document.getElementById('hero');
+    video.pause();
+    
     let last = -1;
-    function scrub(){
-      const scrollable = hero.offsetHeight - innerHeight;
-      const progress = Math.min(1, Math.max(0, -hero.getBoundingClientRect().top / scrollable));
-      if (!isNaN(video.duration)) video.currentTime = Math.min(progress * video.duration, video.duration - 0.05);
-      const idx = Math.min(heads.length - 1, Math.floor(progress * heads.length));
-      if (idx !== last){ heads.forEach((h,i)=>h.classList.toggle('is-active', i===idx)); dots.forEach((d,i)=>d.classList.toggle('is-active', i===idx)); last = idx; }
+    let ticking = false;
+
+    function updateScrub(){
+      const scrollable = hero.offsetHeight - window.innerHeight;
+      if (scrollable > 0){
+        const progress = Math.min(1, Math.max(0, -hero.getBoundingClientRect().top / scrollable));
+        if (!isNaN(video.duration) && video.duration > 0){
+          const targetTime = Math.min(progress * video.duration, Math.max(0, video.duration - 0.05));
+          if (Math.abs(video.currentTime - targetTime) > 0.005) {
+            video.currentTime = targetTime;
+          }
+        }
+        const idx = Math.min(heads.length - 1, Math.floor(progress * heads.length));
+        if (idx !== last){
+          heads.forEach((h,i) => h.classList.toggle('is-active', i === idx));
+          dots.forEach((d,i) => d.classList.toggle('is-active', i === idx));
+          last = idx;
+        }
+      }
+      ticking = false;
     }
-    addEventListener('scroll', () => requestAnimationFrame(scrub), {passive:true});
-    scrub();
+
+    function onScroll(){
+      if (!ticking){
+        requestAnimationFrame(updateScrub);
+        ticking = true;
+      }
+    }
+
+    video.addEventListener('loadedmetadata', updateScrub);
+    video.addEventListener('canplay', updateScrub);
+    addEventListener('scroll', onScroll, {passive:true});
+    addEventListener('resize', onScroll, {passive:true});
+    updateScrub();
   }
 
   // ===== Nav background on scroll =====
